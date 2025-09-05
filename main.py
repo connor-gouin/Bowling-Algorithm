@@ -15,7 +15,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from math import sqrt, cos, sin, atan2, pi
 from pins import PinLayout, WORLD
-from solver import choose_simple_shot, choose_complex_shot, choose_single_pin_shot
+from solver import choose_complex_shot
 from solver import compute_hits_for_line, line_from_two_points
 
 # ---------------------- Drawing / Coordinate mapping ----------------------
@@ -100,7 +100,7 @@ class BowlingBotApp(tk.Tk):
         super().__init__()
         self.title("Bowling Bot GUI")
         self.geometry("1100x700")
-        self.resizable(False, False)
+        self.resizable(True, True)
 
         # World <-> pixel mapping
         self.canvas_margin = 40
@@ -198,19 +198,6 @@ class BowlingBotApp(tk.Tk):
             messagebox.showinfo("No Pins", "No pins are standing.")
             self.clears_preview()
             return
-        # if n == 1:
-        #     plan = choose_single_pin_shot(standing[0])
-        #     aim_line = plan['aim_line']
-        #     self.redraw(preview=True, aim_line=aim_line, ghost_ball=None, hits=[standing[0]])
-        #     return
-        # if n == 2:
-        #     plan = choose_simple_shot(standing, WORLD)
-        #     aim_line = plan['aim_line']
-        #     ghost = plan['ghost_ball']
-        #     hits = plan['pred_hits']
-        #     self.redraw(preview=True, aim_line=aim_line, ghost_ball=ghost, hits=hits)
-        #     return
-        # Complex
         plan = choose_complex_shot(standing, WORLD, strategy=self.strategy_var.get(), samples=int(self.sample_var.get()))
         aim_line = plan['aim_line']
         hits = plan['pred_hits']

@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from math import sqrt
 
 # --- World configuration ---
-# Units are "pin spacing" (s = 1). Pin triangle row gap = sqrt(3)/2.
 WORLD = {
     "s": 1.0,
     "elasticity": 0.75,
