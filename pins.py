@@ -6,16 +6,17 @@ from math import sqrt
 # Units are "pin spacing" (s = 1). Pin triangle row gap = sqrt(3)/2.
 WORLD = {
     "s": 1.0,
+    "elasticity": 0.75,
     "row_gap": 3**0.5 / 2.0,  # ~0.866
     "head_y": 10.0,           # y of head pin (row 1)
     "lane_width": 4.0,        # ~ 4 spacings wide
     "lane_length": 16.0,      # enough to draw nicely
     "ball_origin": (0.0, 0.0),
     "ball_r": 0.45,           # approximate bowling ball radius in "s" units
-    "pin_r": 0.20,            # approximate pin contact radius
+    "pin_r": 0.25,            # approximate pin contact radius
     "px_per_u": 50.0,         # set at runtime by GUI
-    "ball_m": 5.0,
-    "pin_m": 1.0,
+    "ball_m": 6.0,
+    "pin_m": 1.5,
     "speed": 1.0
 }
 

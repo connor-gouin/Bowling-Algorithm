@@ -1,7 +1,11 @@
 
-from math import sqrt, atan2, cos, sin, inf
+from math import sqrt, atan2, cos, sin, radians, inf
 from typing import List, Dict, Tuple
 from pins import WORLD, Pin
+import copy
+import heapq
+from dataclasses import dataclass
+from collections import deque
 
 # ---------------- Geometry helpers ----------------
 def norm(v):
@@ -73,32 +77,86 @@ def choose_simple_shot(standing: List[Pin], world: Dict) -> Dict:
     best = plan1 if abs(plan1["theta"]) <= abs(plan2["theta"]) else plan2
     return best
 
-def choose_complex_shot(standing: List[Pin], world: Dict, strategy="max_hits", samples=181) -> Dict:
+def choose_complex_shot(standing: List[Pin], world: Dict, strategy="breadth_first", samples=181) -> Dict:
     origin = world['ball_origin']
     rb = world['ball_r']
     end_y = world['lane_length']
-    half_w = world['lane_width']/2 - rb
-    xs = [(-half_w + i*(2*half_w)/(samples-1)) for i in range(samples)]
 
-    best = None
+    # typically you'd cap to lane edges minus ball radius:
+    half_w = world['lane_width'] / 2 + 3 * rb
+    xs = [(-half_w + i * (2 * half_w) / (samples - 1)) for i in range(samples)]
+    shots = []
     for x_end in xs:
         dx = x_end - origin[0]
         dy = end_y - origin[1]
         theta = atan2(dy, dx)
         far = (x_end, end_y)
-        hit_ids = simulate_shot(standing, theta)
+        if strategy == "breadth_first":
+            knocked, hit_ids, moves = simulate_shot_bf(standing, theta)
+        if strategy == "recursive":
+            knocked, hit_ids, moves = simulate_shot_recursive(standing, theta)
         hits = [p for p in standing if p.pid in hit_ids]
-        score = len(hits)
-        if best is None:
-            best = {"score":score, "theta":theta, "aim_line":(origin, far), "pred_hits":hits}
+        shots.append({"score": knocked, "theta": theta, "aim_line": (origin, far), "pred_hits": hits, "moves": moves})
+    # max score among all sampled shots
+    max_score = max(s["score"] for s in shots)
+    # find widest contiguous run(s) where score == max_score
+    best_range = None
+    best_len = 0
+    cur_start = None
+
+    for i, s in enumerate(shots):
+        if s["score"] == max_score:
+            if cur_start is None:
+                cur_start = i
         else:
-            if strategy == "max_hits":
-                if score > best["score"] or (score == best["score"] and abs(theta) < abs(best["theta"])):
-                    best = {"score":score, "theta":theta, "aim_line":(origin, far), "pred_hits":hits}
-            elif strategy == "min_angle":
-                if abs(theta) < abs(best["theta"]) or (abs(theta)==abs(best["theta"]) and score>best["score"]):
-                    best = {"score":score, "theta":theta, "aim_line":(origin, far), "pred_hits":hits}
-    return best
+            if cur_start is not None:
+                cur_len = i - cur_start  # length of the finished run
+                if cur_len > best_len:
+                    best_len = cur_len
+                    best_range = (cur_start, i - 1)
+                cur_start = None
+    # handle a run that reaches the end
+    if cur_start is not None:
+        cur_len = len(shots) - cur_start
+        if cur_len > best_len:
+            best_len = cur_len
+            best_range = (cur_start, len(shots) - 1)
+    print(best_range)
+    # pick the middle index of the widest run
+    start, stop = best_range
+    mid = (start + stop) // 2
+
+    # optional tie-breaker: within the widest run, pick the shot with smallest |theta|
+    # mid = min(range(start, stop + 1), key=lambda i: abs(shots[i]["theta"]))
+
+    return shots[mid]
+
+
+    # origin = world['ball_origin']
+    # rb = world['ball_r']
+    # end_y = world['lane_length']
+    # half_w = world['lane_width']/2 - rb
+    # xs = [(-half_w + i*(2*half_w)/(samples-1)) for i in range(samples)]
+
+    # best = None
+    # for x_end in xs:
+    #     dx = x_end - origin[0]
+    #     dy = end_y - origin[1]
+    #     theta = atan2(dy, dx)
+    #     far = (x_end, end_y)
+    #     knocked, hit_ids, moves = simulate_shot(standing, theta)
+    #     hits = [p for p in standing if p.pid in hit_ids]
+    #     score = knocked
+    #     if best is None:
+    #         best = {"score":score, "theta":theta, "aim_line":(origin, far), "pred_hits":hits, "moves": moves}
+    #     else:
+    #         if strategy == "max_hits":
+    #             if score > best["score"] or (score == best["score"] and abs(theta) < abs(best["theta"])):
+    #                 best = {"score":score, "theta":theta, "aim_line":(origin, far), "pred_hits":hits, "moves": moves}
+    #         elif strategy == "min_angle":
+    #             if abs(theta) < abs(best["theta"]) or (abs(theta)==abs(best["theta"]) and score>best["score"]):
+    #                 best = {"score":score, "theta":theta, "aim_line":(origin, far), "pred_hits":hits}
+    # return best
 
 # ---------------- Physics simulation ----------------
 
@@ -128,7 +186,7 @@ def resolve_elastic(p1, v1, m1, p2, v2, m2):
 
 def elastic_collision(p1, s1, th1, m1,
                       p2, s2, th2, m2,
-                      e=1.0):
+                      e):
     """
     2D frictionless collision between two disks (no spin).
     Inputs:
@@ -235,7 +293,7 @@ def first_hit_centers(radius, pins, theta, origin):
             best_t, best_pin = t_exit, p
 
     if best_pin is None:
-        return None, None, None
+        return None, None, None, None
 
     # Moving object's center at contact
     mx = ox + dx * best_t
@@ -244,7 +302,7 @@ def first_hit_centers(radius, pins, theta, origin):
     # Pin center (as-is)
     px, py = best_pin.pos
     pid = best_pin.pid
-    return (mx, my), (px, py), pid
+    return best_t, (mx, my), (px, py), pid
 
 def recursive_topple(radius, pins, theta, origin, speed, mass):
     rp = WORLD['pin_r']
@@ -252,39 +310,149 @@ def recursive_topple(radius, pins, theta, origin, speed, mass):
     mp = WORLD['pin_m']
     knocked = 0
     hit_ids = set()
+    moves = []
 
-    moving_center, pin_center, pid = first_hit_centers(radius, pins, theta, origin)
+    best_t, moving_center, pin_center, pid = first_hit_centers(radius, pins, theta, origin)
 
-    if pid is None:
-        return 0
+    if pid is None or speed < 0.25*WORLD['speed']:
+        return knocked, hit_ids, moves
     else: 
         knocked+=1
         for pin in pins:
             if pin.pid == pid:
                 pin.standing = False
             hit_ids.add(pid)
-
-    (speed1,theta1),(speed2,theta2) = elastic_collision(p1=moving_center,s1=speed,th1=theta,m1=mass,p2=pin_center,s2=0.0,th2=0.0,m2=mp)
-
-    knocked1, hit_ids1 = recursive_topple(rp, pins, theta2, pin_center, speed2, mp)
-    knocked2, hit_ids2 = recursive_topple(rb, pins, theta1, moving_center, speed1, mass)
+    e = WORLD['elasticity']
+    (speed1,theta1),(speed2,theta2) = elastic_collision(p1=moving_center,s1=speed,th1=theta,m1=mass,p2=pin_center,s2=0.0,th2=0.0,m2=mp,e=e)
+    moves.append({
+        "moving_origin": origin,
+        "moving_hit": moving_center,
+        "moving_radius": radius
+    })
+    knocked1, hit_ids1, moves1 = recursive_topple(rp, pins, theta2, pin_center, speed2, mp)
+    knocked2, hit_ids2, moves2 = recursive_topple(radius, pins, theta1, moving_center, speed1, mass)
     knocked += knocked1 + knocked2
     for id1 in hit_ids1:
         hit_ids.add(id1)
     for id2 in hit_ids2:
         hit_ids.add(id2)
-    return knocked, hit_ids
+    for move1 in moves1:
+        moves.append(move1)
+    for move2 in moves2:
+        moves.append(move2)
+    return knocked, hit_ids, moves
     
+@dataclass
+class Node:
+    radius: float
+    mass: float
+    origin: tuple   # (x, y)
+    speed: float
+    theta: float
+    kind: str       # "ball" or "pin" (for logging)
 
-def simulate_shot(standing, theta):
+def topple_bfs(pins, theta0):
+    rb = WORLD['ball_r']; mb = WORLD.get('ball_m', 10.0)
+    pin_r = WORLD['pin_r']; pin_m = WORLD.get('pin_m', 1.0)
+    e = WORLD.get('elasticity', 1.0)
+    speed_floor = 0.25 * WORLD['speed']
+
+    q = deque()
+    q.append(Node(radius=rb, mass=mb, origin=WORLD['ball_origin'],
+                  speed=WORLD.get('ball_speed', WORLD['speed']),
+                  theta=theta0, kind="ball"))
+
+    knocked_ids = set()
+    moves = []
+
+    # process by levels
+    while q:
+        level_size = len(q)
+
+        # (optional) sort nodes within this level by time-to-next-hit
+        # to get a more realistic ordering while keeping BFS levels
+        level_nodes = []
+        for _ in range(level_size):
+            level_nodes.append(q.popleft())
+
+        def time_to_next_hit(node):
+            t_hit, _, pin_obj, _ = first_hit_centers(node.radius, pins, node.theta, node.origin)
+            if t_hit is None or node.speed <= 0: return float('inf')
+            return t_hit / node.speed
+        level_nodes.sort(key=time_to_next_hit)  # remove if you want pure FIFO
+
+        # advance each node by exactly one collision
+        for node in level_nodes:
+            if node.speed < speed_floor:
+                continue
+
+            t_hit, contact, pin_center, pin_id = first_hit_centers(
+                node.radius, pins, node.theta, node.origin
+            )
+
+            for pin in pins:
+                if pin.pid == pin_id:
+                    pin_obj = pin
+
+            if t_hit is None:
+                continue
+            if not getattr(pin_obj, "standing", True):
+                # someone else in this level (earlier in list) already took it down
+                continue
+            
+            # knock the pin
+            pin_obj.standing = False
+            knocked_ids.add(pin_obj.pid)
+
+            # log path (origin -> contact), in world units
+            moves.append({
+                "moving_origin": node.origin,
+                "moving_hit": contact,
+                "moving_radius": node.radius,
+                "kind": node.kind,
+            })
+
+            # resolve velocities at contact
+            (s1, th1), (s2, th2) = elastic_collision(
+                p1=contact, s1=node.speed, th1=node.theta, m1=node.mass,
+                p2=pin_center, s2=0.0, th2=0.0, m2=pin_m, e=e
+            )
+
+            # small nudge along new headings
+            eps = 1e-4
+            next_ball_origin = (contact[0] + eps * cos(th1), contact[1] + eps * sin(th1))
+            next_pin_origin  = (pin_center[0] + eps * cos(th2), pin_center[1] + eps * sin(th2))
+
+            # enqueue children for the NEXT level (one step per level)
+            if s1 > speed_floor:
+                q.append(Node(radius=node.radius, mass=node.mass,
+                              origin=next_ball_origin, speed=s1, theta=th1, kind=node.kind))
+            if s2 > speed_floor:
+                q.append(Node(radius=pin_r, mass=pin_m,
+                              origin=next_pin_origin, speed=s2, theta=th2, kind="pin"))
+
+    return len(knocked_ids), knocked_ids, moves
+
+def simulate_shot_recursive(standing, theta):
     rb = WORLD['ball_r']
     rp = WORLD['pin_r']
     ball_origin = WORLD['ball_origin']
     speed = WORLD['speed']
     ball_mass = WORLD['ball_m']
+    standing_copy = copy.deepcopy(standing)
+    knocked, hit_ids, moves = recursive_topple(rb,standing_copy,theta,ball_origin,speed,ball_mass)
+    return knocked, hit_ids, moves
 
-    knocked = recursive_topple(rb,standing,theta,ball_origin,speed,ball_mass)
-    return knocked
+def simulate_shot_bf(standing, theta):
+    rb = WORLD['ball_r']
+    rp = WORLD['pin_r']
+    ball_origin = WORLD['ball_origin']
+    speed = WORLD['speed']
+    ball_mass = WORLD['ball_m']
+    standing_copy = copy.deepcopy(standing)
+    knocked, hit_ids, moves = topple_bfs(standing_copy,theta)
+    return knocked, hit_ids, moves
+
 
 
     # rb = WORLD['ball_r']; rp = WORLD['pin_r']

@@ -59,7 +59,7 @@ class Drawer:
         r = WORLD['ball_r'] * WORLD['px_per_u']
         self.c.create_oval(bx-r, by-r, bx+r, by+r, fill="#333", outline="black", width=1, tags="ball")
 
-    def draw_shot_preview(self, aim_line=None, ghost_ball=None, hits=None):
+    def draw_shot_preview(self, aim_line=None, ghost_ball=None, hits=None, moves=None):
         # Clear old preview
         self.c.delete("preview")
         if aim_line is not None:
@@ -81,6 +81,16 @@ class Drawer:
                 px,py = self.world_to_px(x,y)
                 rr = WORLD['pin_r'] * WORLD['px_per_u']
                 self.c.create_oval(px-rr, py-rr, px+rr, py+rr, outline="#2e7d32", width=3, tags="preview")
+        if moves:
+            for move in moves:
+                (ox,oy) = move['moving_origin']
+                ox,oy = self.world_to_px(ox,oy)
+                (hx,hy) = move['moving_hit']
+                hx, hy = self.world_to_px(hx,hy)
+                r = move['moving_radius'] * WORLD['px_per_u']
+                self.c.create_oval(ox-r, oy-r, ox+r, oy+r, outline="#2e7d32", width=3, tags="preview")
+                self.c.create_oval(hx-r, hy-r, hx+r, hy+r, outline="#2e7d32", width=3, tags="preview")
+                self.c.create_line(ox,oy,hx,hy, width=3, fill="#2e7d32", tags="preview")
 
 
 # ---------------------- GUI App ----------------------
@@ -130,10 +140,10 @@ class BowlingBotApp(tk.Tk):
 
         ttk.Label(self.ctrl_frame, text="Bowling Bot", font=("Segoe UI", 16, "bold")).grid(row=0, column=0, pady=(0,10))
 
-        self.strategy_var = tk.StringVar(value="max_hits")
-        ttk.Label(self.ctrl_frame, text="Strategy (>2 pins):").grid(row=1, column=0, sticky="w", pady=(5,0))
+        self.strategy_var = tk.StringVar(value="breadth_first")
+        ttk.Label(self.ctrl_frame, text="Strategy:").grid(row=1, column=0, sticky="w", pady=(5,0))
         self.strategy_cb = ttk.Combobox(self.ctrl_frame, state="readonly", textvariable=self.strategy_var,
-                                        values=["max_hits", "min_angle"])
+                                        values=["breadth_first", "recursive"])
         self.strategy_cb.grid(row=2, column=0, sticky="ew", pady=(0,5))
 
         self.sample_var = tk.IntVar(value=181)
@@ -188,23 +198,24 @@ class BowlingBotApp(tk.Tk):
             messagebox.showinfo("No Pins", "No pins are standing.")
             self.clears_preview()
             return
-        if n == 1:
-            plan = choose_single_pin_shot(standing[0])
-            aim_line = plan['aim_line']
-            self.redraw(preview=True, aim_line=aim_line, ghost_ball=None, hits=[standing[0]])
-            return
-        if n == 2:
-            plan = choose_simple_shot(standing, WORLD)
-            aim_line = plan['aim_line']
-            ghost = plan['ghost_ball']
-            hits = plan['pred_hits']
-            self.redraw(preview=True, aim_line=aim_line, ghost_ball=ghost, hits=hits)
-            return
+        # if n == 1:
+        #     plan = choose_single_pin_shot(standing[0])
+        #     aim_line = plan['aim_line']
+        #     self.redraw(preview=True, aim_line=aim_line, ghost_ball=None, hits=[standing[0]])
+        #     return
+        # if n == 2:
+        #     plan = choose_simple_shot(standing, WORLD)
+        #     aim_line = plan['aim_line']
+        #     ghost = plan['ghost_ball']
+        #     hits = plan['pred_hits']
+        #     self.redraw(preview=True, aim_line=aim_line, ghost_ball=ghost, hits=hits)
+        #     return
         # Complex
         plan = choose_complex_shot(standing, WORLD, strategy=self.strategy_var.get(), samples=int(self.sample_var.get()))
         aim_line = plan['aim_line']
         hits = plan['pred_hits']
-        self.redraw(preview=True, aim_line=aim_line, ghost_ball=None, hits=hits)
+        moves = plan['moves']
+        self.redraw(preview=True, aim_line=aim_line, ghost_ball=None, hits=hits, moves=moves)
 
     def on_reset_rack(self):
         self.layout.reset_full_rack()
@@ -235,12 +246,12 @@ class BowlingBotApp(tk.Tk):
     def clears_preview(self):
         self.canvas.delete("preview")
 
-    def redraw(self, preview=False, aim_line=None, ghost_ball=None, hits=None):
+    def redraw(self, preview=False, aim_line=None, ghost_ball=None, hits=None, moves=None):
         self.drawer.draw_lane()
         self.drawer.draw_pins(self.layout)
         self.drawer.draw_ball_origin()
         if preview:
-            self.drawer.draw_shot_preview(aim_line=aim_line, ghost_ball=ghost_ball, hits=hits)
+            self.drawer.draw_shot_preview(aim_line=aim_line, ghost_ball=ghost_ball, hits=hits, moves=moves)
 
 
 if __name__ == "__main__":
