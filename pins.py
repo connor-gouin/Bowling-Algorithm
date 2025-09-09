@@ -4,7 +4,7 @@ from math import sqrt
 
 # --- World configuration ---
 WORLD = {
-    "s": 1.0,
+    "s": 1.0, # spacing (1.0 means pins are 1 pin apart)
     "elasticity": 0.85,
     "row_gap": 3**0.5 / 2.0,  # ~0.866
     "head_y": 10.0,           # y of head pin (row 1)
@@ -35,8 +35,8 @@ class PinLayout:
         self._build_default_positions()
 
     def _build_default_positions(self):
-        s = WORLD["s"]
-        g = 3**0.5 / (2.0 / s)  # WORLD["row_gap"]
+        s = WORLD["s"]*WORLD["pin_r"]*2 + WORLD["pin_r"]*2
+        g = s*(3**0.5 / (2.0))  # WORLD["row_gap"]
         y0 = WORLD["head_y"]
         # Row 1: 1
         P1  = (0.0, y0)
