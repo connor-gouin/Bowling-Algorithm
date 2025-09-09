@@ -1,5 +1,5 @@
 
-from math import sqrt, atan2, cos, sin, radians, inf
+from math import sqrt, atan2, cos, sin, radians, inf, pi
 from typing import List, Dict, Tuple
 from pins import WORLD, Pin
 import copy
@@ -90,10 +90,13 @@ def choose_complex_shot(standing: List[Pin], world: Dict, strategy="breadth_firs
         if cur_len > best_len:
             best_len = cur_len
             best_range = (cur_start, len(shots) - 1)
-    print(best_range)
+    # print(best_range)
     # pick the middle index of the widest run
     start, stop = best_range
+    error_allowed = ((shots[start]['theta']-shots[stop]['theta'])/2)*180/pi
+    # print(f"{error_allowed} degrees of error allowed both ways")
     mid = (start + stop) // 2
+    shots[mid]['error_allowed'] = error_allowed
     return shots[mid]
 
 

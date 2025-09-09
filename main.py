@@ -153,6 +153,7 @@ class BowlingBotApp(tk.Tk):
         ttk.Button(self.ctrl_frame, text="Generate Shot", command=self.on_generate_shot).grid(row=5, column=0, pady=10, sticky="ew")
         ttk.Button(self.ctrl_frame, text="Reset Rack", command=self.on_reset_rack).grid(row=6, column=0, sticky="ew")
         ttk.Button(self.ctrl_frame, text="Clear All", command=self.on_clear_all).grid(row=7, column=0, sticky="ew")
+        ttk.Button(self.ctrl_frame, text="SHOOT", command=self.shoot_shot).grid(row=14, column=0, pady=10, sticky="ew")
 
         ttk.Separator(self.ctrl_frame, orient="horizontal").grid(row=8, column=0, sticky="ew", pady=10)
 
@@ -199,10 +200,15 @@ class BowlingBotApp(tk.Tk):
             self.clears_preview()
             return
         plan = choose_complex_shot(standing, WORLD, strategy=self.strategy_var.get(), samples=int(self.sample_var.get()))
+        ttk.Label(self.ctrl_frame, text=f"Error Margin: {plan['error_allowed']:.2f}° on either side",
+                  justify="left", wraplength=200).grid(row=20, column=0, sticky="w", pady=10)
         aim_line = plan['aim_line']
         hits = plan['pred_hits']
         moves = plan['moves']
         self.redraw(preview=True, aim_line=aim_line, ghost_ball=None, hits=hits, moves=moves)
+
+    def shoot_shot(self):
+        pass
 
     def on_reset_rack(self):
         self.layout.reset_full_rack()
