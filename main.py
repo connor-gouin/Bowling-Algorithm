@@ -74,13 +74,6 @@ class Drawer:
             r = WORLD['ball_r'] * WORLD['px_per_u']
             self.c.create_oval(px-r, py-r, px+r, py+r, outline="#1e88e5", width=2, dash=(3,3), tags="preview")
 
-        # highlight predicted hits
-        if hits:
-            for p in hits:
-                x,y = p.pos
-                px,py = self.world_to_px(x,y)
-                rr = WORLD['pin_r'] * WORLD['px_per_u']
-                self.c.create_oval(px-rr, py-rr, px+rr, py+rr, outline="#2e7d32", width=3, tags="preview")
         if moves:
             for move in moves:
                 (ox,oy) = move['moving_origin']
@@ -91,6 +84,15 @@ class Drawer:
                 self.c.create_oval(ox-r, oy-r, ox+r, oy+r, outline="#2e7d32", width=3, tags="preview")
                 self.c.create_oval(hx-r, hy-r, hx+r, hy+r, outline="#2e7d32", width=3, tags="preview")
                 self.c.create_line(ox,oy,hx,hy, width=3, fill="#2e7d32", tags="preview")
+
+        # highlight predicted hits
+        if hits:
+            for p in hits:
+                x,y = p.pos
+                px,py = self.world_to_px(x,y)
+                rr = WORLD['pin_r'] * WORLD['px_per_u']
+                self.c.create_oval(px-rr, py-rr, px+rr, py+rr, outline="#2e7d32", width=3, tags="preview")
+
 
 
 # ---------------------- GUI App ----------------------
@@ -202,6 +204,8 @@ class BowlingBotApp(tk.Tk):
         plan = choose_complex_shot(standing, WORLD, strategy=self.strategy_var.get(), samples=int(self.sample_var.get()))
         ttk.Label(self.ctrl_frame, text=f"Error Margin: {plan['error_allowed']:.2f}° on either side",
                   justify="left", wraplength=200).grid(row=20, column=0, sticky="w", pady=10)
+        ttk.Label(self.ctrl_frame, text=f"Pins Hit: {plan['score']         }",
+                  justify="left", wraplength=200).grid(row=22, column=0, sticky="w", pady=10)
         aim_line = plan['aim_line']
         hits = plan['pred_hits']
         moves = plan['moves']

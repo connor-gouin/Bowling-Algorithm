@@ -47,36 +47,48 @@ def pins_hit_along_line(pins: List[Pin], p0, p1, corridor_radius: float) -> List
 # ---------------- Shot planner ----------------
 
 def choose_complex_shot(standing: List[Pin], world: Dict, strategy="breadth_first", samples=181) -> Dict:
-    origin = world['ball_origin']
+    # origin = world['ball_origin']
     rb = world['ball_r']
     end_y = world['lane_length']
-
+    head_y = world['head_y']
+    origins = [(0.0,0.0),(-world['lane_width']/2.0,0.0),(world['lane_width']/2.0,0.0),(-world['lane_width']/4.0,0.0),(world['lane_width']/4.0,0.0)]
     # typically you'd cap to lane edges minus ball radius:
-    half_w = world['lane_width'] / 2 + 3 * rb
+    half_w = world['lane_width'] / 2 # + 3 * rb
     xs = [(-half_w + i * (2 * half_w) / (samples - 1)) for i in range(samples)]
     shots = []
-    for x_end in xs:
-        dx = x_end - origin[0]
-        dy = end_y - origin[1]
-        theta = atan2(dy, dx)
-        far = (x_end, end_y)
-        if strategy == "breadth_first":
-            knocked, hit_ids, moves = simulate_shot_bf(standing, theta)
-        if strategy == "recursive":
-            knocked, hit_ids, moves = simulate_shot_recursive(standing, theta)
-        hits = [p for p in standing if p.pid in hit_ids]
-        shots.append({"score": knocked, "theta": theta, "aim_line": (origin, far), "pred_hits": hits, "moves": moves})
+    starting_origin = (-world['lane_width'] / 2.0, 0.0)
+    num_widths = 10
+    for i in range(num_widths):
+        origin = (starting_origin[0]+i*(world['lane_width']/(num_widths-1)),0.0)
+        for x_end in xs:
+            dx = x_end - origin[0]
+            dy = head_y - origin[1]
+            theta = atan2(dy, dx)
+            far = (x_end, head_y)
+            if strategy == "breadth_first":
+                knocked, hit_ids, moves = simulate_shot_bf(standing, theta, origin)
+            if strategy == "recursive":
+                knocked, hit_ids, moves = simulate_shot_recursive(standing, theta)
+            hits = [p for p in standing if p.pid in hit_ids]
+            shots.append({"score": knocked, "theta": theta, "aim_line": (origin, far), "pred_hits": hits, "moves": moves, "origin": origin})
     # max score among all sampled shots
     max_score = max(s["score"] for s in shots)
     # find widest contiguous run(s) where score == max_score
     best_range = None
     best_len = 0
     cur_start = None
-
     for i, s in enumerate(shots):
         if s["score"] == max_score:
             if cur_start is None:
                 cur_start = i
+                cur_origin = s["origin"]
+            if s["origin"] != cur_origin:
+                cur_len = i - cur_start
+                if cur_len > best_len:
+                    best_len = cur_len
+                    best_range = (cur_start, i - 1)
+                cur_start = i
+                cur_origin = s["origin"]
         else:
             if cur_start is not None:
                 cur_len = i - cur_start  # length of the finished run
@@ -232,7 +244,7 @@ def first_hit_centers(radius, pins, theta, origin):
         elif t_enter < 0 <= t_exit and t_exit < best_t:
             # started "inside" enlarged circle; take the exit point
             best_t, best_pin = t_exit, p
-
+    
     if best_pin is None:
         return None, None, None, None
 
@@ -243,6 +255,13 @@ def first_hit_centers(radius, pins, theta, origin):
     # Pin center (as-is)
     px, py = best_pin.pos
     pid = best_pin.pid
+
+    # tx = mx - origin[0]
+    # ty = my - origin[1]
+    # distance = sqrt(tx**2 + ty**2)
+    # if distance > rp*3.5 and radius == rp:
+    #     return None, None, None, None
+
     return best_t, (mx, my), (px, py), pid
 
 def recursive_topple(radius, pins, theta, origin, speed, mass):
@@ -292,14 +311,14 @@ class Node:
     theta: float
     kind: str       # "ball" or "pin" (for logging)
 
-def topple_bfs(pins, theta0):
+def topple_bfs(pins, theta0, origin):
     rb = WORLD['ball_r']; mb = WORLD.get('ball_m', 10.0)
     pin_r = WORLD['pin_r']; pin_m = WORLD.get('pin_m', 1.0)
     e = WORLD.get('elasticity', 1.0)
     speed_floor = 0.25 * WORLD['speed']
 
     q = deque()
-    q.append(Node(radius=rb, mass=mb, origin=WORLD['ball_origin'],
+    q.append(Node(radius=rb, mass=mb, origin=origin,
                   speed=WORLD.get('ball_speed', WORLD['speed']),
                   theta=theta0, kind="ball"))
 
@@ -373,9 +392,9 @@ def simulate_shot_recursive(standing, theta):
     knocked, hit_ids, moves = recursive_topple(rb,standing_copy,theta,ball_origin,speed,ball_mass)
     return knocked, hit_ids, moves
 
-def simulate_shot_bf(standing, theta):
+def simulate_shot_bf(standing, theta, origin):
     standing_copy = copy.deepcopy(standing)
-    knocked, hit_ids, moves = topple_bfs(standing_copy,theta)
+    knocked, hit_ids, moves = topple_bfs(standing_copy,theta, origin)
     return knocked, hit_ids, moves
 
 def compute_hits_for_line(pins, p0, p1, corridor):
